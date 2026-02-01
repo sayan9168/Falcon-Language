@@ -1,47 +1,58 @@
 import base64
+import re
 
 class FalconShieldCore:
     def __init__(self):
-        # Falcon-এর মেমরি এবং প্লাগইন রেজিস্ট্রি
         self.memory = {}
         self.plugins = []
 
-    # --- ১. মেমরি সিকিউরিটি (Shield-Core) ---
+    # --- ১. মেমরি এনক্রিপশন লজিক ---
     def encrypt_data(self, data):
-        # Falcon RAM-এ ডাটা পাঠানোর আগে এনক্রিপ্ট করে
         encoded = base64.b64encode(data.encode()).decode()
         return f"FALCON_SECURE_{encoded}"
 
-    def set_secure_variable(self, name, value):
-        encrypted_value = self.encrypt_data(value)
-        self.memory[name] = encrypted_value
-        print(f"✅ [Shield-Core] Variable '{name}' is now encrypted in RAM.")
+    # --- ২. দ্য পার্সার (The Parser) ---
+    def execute_code(self, code_text):
+        print("🚀 Falcon Engine: Executing...")
+        
+        # প্রতি লাইন ধরে কোড পড়া
+        lines = code_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            
+            # ১. say কমান্ড হ্যান্ডেল করা
+            if line.startswith('say '):
+                # ইনভার্টেড কমার ভেতরের টেক্সট বের করা
+                content = re.findall(r'"(.*?)"', line)
+                if content:
+                    print(f"🗣️ Output: {content[0]}")
 
-    def get_variable(self, name):
-        return self.memory.get(name, "Variable not found")
+            # ২. secure let কমান্ড হ্যান্ডেল করা
+            elif line.startswith('secure let '):
+                # ভেরিয়েবল নাম এবং ভ্যালু আলাদা করা
+                match = re.search(r'secure let (\w+)\s*=\s*"(.*?)"', line)
+                if match:
+                    var_name = match.group(1)
+                    var_value = match.group(2)
+                    encrypted = self.encrypt_data(var_value)
+                    self.memory[var_name] = encrypted
+                    print(f"🔒 [Shield-Core] Encrypted '{var_name}' in RAM.")
 
-    # --- ২. প্লাগইন ও টুলস লোডার (Extensibility) ---
     def load_plugin(self, plugin_name):
-        """
-        এটি অন্য কোনো ডেভেলপারের বানানো কোড বা টুলসকে 
-        ফ্যালকন কোরের সাথে কানেক্ট করে।
-        """
-        print(f"🔌 Loading external tool: {plugin_name}...")
+        print(f"🔌 Loading tool: {plugin_name}...")
         self.plugins.append(plugin_name)
-        # ভবিষ্যতে এখানে ডাইনামিক ইম্পোর্ট লজিক যোগ করা হবে
-        print(f"✅ Tool '{plugin_name}' is now integrated with Falcon Core.")
+        print(f"✅ {plugin_name} is ready.")
 
-# --- ৩. টেস্ট রান (Falcon Simulation) ---
+# --- ৩. রিয়েল টাইম টেস্ট ---
 if __name__ == "__main__":
     engine = FalconShieldCore()
     
-    # সিকিউরিটি টেস্ট
-    engine.set_secure_variable("my_password", "admin123")
-    print("Memory Content:", engine.get_variable("my_password"))
+    # এটি একটি ডেমো ফ্যালকন কোড যা আপনার ইঞ্জিন এখন পড়তে পারবে
+    falcon_code = """
+    secure let vault = "FALCON_SECRET_2026"
+    say "Hello from the new Parser!"
+    say "Data is now being protected by Shield-Core."
+    """
     
-    print("-" * 30)
-    
-    # এক্সটার্নাল টুলস টেস্ট
-    engine.load_plugin("Falcon-Graphics-Engine")
-    engine.load_plugin("Falcon-AI-Library")
+    engine.execute_code(falcon_code)
     
