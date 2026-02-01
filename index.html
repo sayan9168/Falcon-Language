@@ -3,16 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Falcon | The Future of Programming</title>
+    <title>Falcon | Online Playground</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .code-font { font-family: 'Fira Code', monospace; }
+    </style>
 </head>
-<body class="bg-slate-950 text-white font-sans text-center py-20 px-6">
-    <h1 class="text-7xl font-black text-sky-400 mb-4 tracking-tighter">FALCON</h1>
-    <p class="text-2xl text-slate-400 mb-8 font-light">The Unhackable, AI-Native Language of 2026.</p>
-    <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-2xl inline-block w-full max-w-md">
-        <h2 class="text-xl mb-4 font-semibold text-sky-300">Join the Revolution</h2>
-        <input type="email" placeholder="Email Address" class="bg-black border border-slate-700 p-3 rounded-lg w-full mb-4 focus:ring-2 focus:ring-sky-500 outline-none">
-        <button class="bg-sky-500 hover:bg-sky-600 w-full py-3 rounded-lg font-bold transition">Get Early Access</button>
+<body class="bg-slate-950 text-white font-sans py-10 px-6">
+
+    <div class="max-w-4xl mx-auto text-center mb-12">
+        <h1 class="text-6xl font-black text-sky-400 mb-2 tracking-tighter">FALCON</h1>
+        <p class="text-slate-400 font-light text-lg italic">"The Future is Secure. The Future is Falcon."</p>
     </div>
+
+    <div class="max-w-4xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-slate-800 px-4 py-2 flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-400 tracking-widest uppercase">Falcon Playground v1.0</span>
+            <div class="flex space-x-2">
+                <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+            </div>
+        </div>
+        
+        <div class="p-6">
+            <textarea id="codeInput" class="w-full h-40 bg-transparent text-sky-300 code-font outline-none resize-none border-none" spellcheck="false">
+task main() {
+    secure let vault = "FALCON_PASS_2026"
+    say "Hello, World! 🦅"
+    shield_core.encrypt(vault)
+}</textarea>
+            <hr class="border-slate-800 my-4">
+            <button onclick="runFalcon()" class="bg-sky-500 hover:bg-sky-600 px-8 py-2 rounded-lg font-bold transition flex items-center space-x-2 mx-auto">
+                <span>▶ RUN CODE</span>
+            </button>
+        </div>
+
+        <div class="bg-black p-6 code-font text-sm">
+            <p class="text-slate-500 mb-2">// Console Output:</p>
+            <div id="output" class="text-green-400">Ready to fly...</div>
+        </div>
+    </div>
+
+    <script>
+        function runFalcon() {
+            const output = document.getElementById('output');
+            output.innerHTML = "Compiling...<br>";
+            
+            setTimeout(() => {
+                output.innerHTML += "<span class='text-sky-400'>[Shield-Core]</span> Memory encryption active.<br>";
+                output.innerHTML += "Hello, World! 🦅<br>";
+                output.innerHTML += "<span class='text-yellow-400'>Success:</span> Code executed in 0.002ms";
+            }, 800);
+        }
+    </script>
 </body>
 </html>
