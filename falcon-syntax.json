@@ -1,0 +1,28 @@
+{
+  "name": "Falcon",
+  "scopeName": "source.fcn",
+  "fileTypes": ["fcn"],
+  "patterns": [
+    {
+      "name": "keyword.control.falcon",
+      "match": "\\b(if|endif|repeat|times|endloop|task|main)\\b"
+    },
+    {
+      "name": "keyword.other.falcon",
+      "match": "\\b(secure let|let|say)\\b"
+    },
+    {
+      "name": "string.quoted.double.falcon",
+      "begin": "\"",
+      "end": "\""
+    },
+    {
+      "name": "constant.numeric.falcon",
+      "match": "\\b\\d+\\b"
+    },
+    {
+      "name": "comment.line.double-slash.falcon",
+      "match": "//.*$"
+    }
+  ]
+}
