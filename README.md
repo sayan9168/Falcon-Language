@@ -26,3 +26,4 @@ task main() {
     secure let vault = "PRIVATE_KEY_123"
     say "Falcon is Online! 🦅"
 }
+To install packages, use: python fpm.py install ai
