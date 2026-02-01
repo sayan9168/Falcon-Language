@@ -3,59 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Falcon | Online Playground</title>
+    <title>Falcon | AI-Native Playground</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .code-font { font-family: 'Fira Code', monospace; }
+        .code-font { font-family: 'Courier New', monospace; }
+        .ai-gradient { background: linear-gradient(90deg, #38bdf8, #818cf8); }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; }
     </style>
 </head>
 <body class="bg-slate-950 text-white font-sans py-10 px-6">
 
-    <div class="max-w-4xl mx-auto text-center mb-12">
-        <h1 class="text-6xl font-black text-sky-400 mb-2 tracking-tighter">FALCON</h1>
-        <p class="text-slate-400 font-light text-lg italic">"The Future is Secure. The Future is Falcon."</p>
+    <div class="max-w-4xl mx-auto text-center mb-10">
+        <h1 class="text-6xl font-black text-sky-400 mb-2 tracking-tighter">FALCON <span class="text-sm bg-sky-500 text-white px-2 py-1 rounded-md align-middle">AI</span></h1>
+        <p class="text-slate-400 font-light italic text-lg">"Built for AI, Secured by Falcon."</p>
     </div>
 
-    <div class="max-w-4xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-        <div class="bg-slate-800 px-4 py-2 flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 tracking-widest uppercase">Falcon Playground v1.0</span>
-            <div class="flex space-x-2">
-                <div class="w-3 h-3 bg-red-500 rounded-full"></div>
-                <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-1 bg-slate-900/80 border border-sky-500/30 rounded-2xl p-6 shadow-xl shadow-sky-500/5">
+            <h3 class="text-sky-400 font-bold mb-4 flex items-center">
+                <span class="mr-2">🤖</span> Falcon AI Assistant
+            </h3>
+            <div id="aiSuggestion" class="text-sm text-slate-300 space-y-4">
+                <p class="p-3 bg-slate-800 rounded-lg border-l-4 border-sky-500 italic">"I'm scanning your code... Type something to get AI suggestions."</p>
+                <button onclick="askAI()" class="w-full py-2 ai-gradient rounded-lg font-bold text-white hover:opacity-90 transition">Fix Code with AI</button>
+            </div>
+            <div class="mt-8 text-xs text-slate-500 border-t border-slate-800 pt-4">
+                <strong>Current Model:</strong> Falcon-Nano-2026<br>
+                <strong>Status:</strong> Ready to Optimize
             </div>
         </div>
-        
-        <div class="p-6">
-            <textarea id="codeInput" class="w-full h-40 bg-transparent text-sky-300 code-font outline-none resize-none border-none" spellcheck="false">
-task main() {
-    secure let vault = "FALCON_PASS_2026"
-    say "Hello, World! 🦅"
-    shield_core.encrypt(vault)
-}</textarea>
-            <hr class="border-slate-800 my-4">
-            <button onclick="runFalcon()" class="bg-sky-500 hover:bg-sky-600 px-8 py-2 rounded-lg font-bold transition flex items-center space-x-2 mx-auto">
-                <span>▶ RUN CODE</span>
-            </button>
-        </div>
 
-        <div class="bg-black p-6 code-font text-sm">
-            <p class="text-slate-500 mb-2">// Console Output:</p>
-            <div id="output" class="text-green-400">Ready to fly...</div>
+        <div class="lg:col-span-2">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+                <div class="bg-slate-800 px-4 py-2 flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Falcon Core v1.0</span>
+                    <div class="flex space-x-2"><div class="w-2 h-2 bg-sky-400 rounded-full animate-pulse"></div></div>
+                </div>
+                <div class="p-6">
+                    <textarea id="codeInput" class="w-full h-48 bg-transparent text-sky-300 code-font outline-none resize-none border-none text-lg">
+task main() {
+    secure let password = "123"
+    say "Processing..."
+}</textarea>
+                    <button onclick="runFalcon()" class="bg-sky-500 hover:bg-sky-600 px-12 py-3 rounded-full font-bold transition mx-auto block mt-4 shadow-lg shadow-sky-500/40">▶ RUN CODE</button>
+                </div>
+                <div class="bg-black p-6 code-font text-sm">
+                    <div id="output" class="text-green-400 font-bold">> Console ready...</div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <div id="successPopup" class="popup bg-slate-900 p-8 rounded-3xl border-2 border-sky-500 shadow-2xl text-center">
+        <h2 class="text-2xl font-bold mb-2 text-sky-400">Security Check Passed! ✅</h2>
+        <p class="text-slate-300">Shield-Core has encrypted your RAM data.</p>
+        <button onclick="closePopup()" class="mt-4 bg-sky-500 text-white px-8 py-2 rounded-full font-bold">Close</button>
     </div>
 
     <script>
-        function runFalcon() {
-            const output = document.getElementById('output');
-            output.innerHTML = "Compiling...<br>";
-            
+        function askAI() {
+            const ai = document.getElementById('aiSuggestion');
+            ai.innerHTML = '<p class="p-3 bg-slate-800 rounded-lg animate-pulse italic">Thinking...</p>';
             setTimeout(() => {
-                output.innerHTML += "<span class='text-sky-400'>[Shield-Core]</span> Memory encryption active.<br>";
-                output.innerHTML += "Hello, World! 🦅<br>";
-                output.innerHTML += "<span class='text-yellow-400'>Success:</span> Code executed in 0.002ms";
+                ai.innerHTML = `
+                    <p class="p-3 bg-slate-800 rounded-lg border-l-4 border-green-500">
+                        <strong>AI Suggestion:</strong> Your variable 'password' is safe, but try adding <code>falcon.optimize()</code> for 10x faster speed!
+                    </p>
+                    <button onclick="askAI()" class="w-full py-2 ai-gradient rounded-lg font-bold text-white mt-4">Generate More</button>
+                `;
+            }, 1000);
+        }
+
+        function runFalcon() {
+            const out = document.getElementById('output');
+            out.innerHTML = "Initializing Shield-Core...<br>";
+            setTimeout(() => {
+                out.innerHTML += "<span class='text-sky-400'>[AI-SCAN]</span> Code is secure.<br>Processing...<br><span class='text-white'>Done! 🦅</span>";
+                document.getElementById('successPopup').style.display = 'block';
             }, 800);
         }
+        function closePopup() { document.getElementById('successPopup').style.display = 'none'; }
     </script>
 </body>
 </html>
