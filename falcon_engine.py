@@ -10,9 +10,9 @@ TOKEN_TYPES = [
     ('ENDIF',      r'endif'),
     ('PRINT',      r'print'),
     ('NET_SEND',   r'network\.send'),
-    ('FILE_IO',    r'file\.(write|read)'), # New Token for Standard Library
+    ('FILE_IO',    r'file\.(write|read)'),
     ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
-    ('OP',         r'==|!=|>=|<=|>|<'),
+    ('OP',         r'==|!=|>=|<=|>|<|\+|\-|\*|\/'), # Added Math Operators
     ('ASSIGN',     r'='),
     ('STRING',     r'".*?"'),
     ('NUMBER',     r'\d+'),
@@ -64,36 +64,54 @@ class FalconEngine:
         while idx < len(self.tokens):
             kind, value, line = self.tokens[idx]
 
-            # 1. Variable Declaration
+            # 1. Variable Declaration & Math (falcon.math)
             if kind == 'SECURE_LET':
-                name = self.tokens[idx+1][1]
-                # Check if it's a file read assignment: secure let x = file.read(...)
-                if self.tokens[idx+3][1] == 'file.read':
-                    file_name = self.tokens[idx+5][1].strip('"')
-                    try:
-                        with open(file_name, 'r') as f:
-                            self.variables[name] = f.read()
-                        print(f"📖 [falcon.io] Loaded '{file_name}' into '{name}'")
-                    except: self.report_error(f"Could not read file {file_name}", line)
-                    idx += 7
-                else:
-                    val = self.tokens[idx+3][1].strip('"')
-                    self.variables[name] = int(val) if val.isdigit() else val
-                    print(f"🛡️ [Line {line}] Secured: {name}")
-                    idx += 4
+                try:
+                    target_var = self.tokens[idx+1][1]
+                    
+                    # Case for Math: secure let x = y + 10
+                    if idx + 4 < len(self.tokens) and self.tokens[idx+4][0] == 'OP' and self.tokens[idx+4][1] in '+-*/':
+                        left_val = self.tokens[idx+3][1]
+                        operator = self.tokens[idx+4][1]
+                        right_val = self.tokens[idx+5][1]
 
-            # 2. File Writing (Standard Library)
+                        v1 = self.variables.get(left_val, int(left_val) if left_val.isdigit() else left_val)
+                        v2 = self.variables.get(right_val, int(right_val) if right_val.isdigit() else right_val)
+
+                        if operator == '+': res = v1 + v2
+                        elif operator == '-': res = v1 - v2
+                        elif operator == '*': res = v1 * v2
+                        elif operator == '/': res = v1 / v2
+                        
+                        self.variables[target_var] = res
+                        print(f"🧬 [falcon.math] {target_var} = {res}")
+                        idx += 6
+                    
+                    # Case for File Read: secure let x = file.read(...)
+                    elif self.tokens[idx+3][1] == 'file.read':
+                        f_name = self.tokens[idx+5][1].strip('"')
+                        with open(f_name, 'r') as f:
+                            self.variables[target_var] = f.read()
+                        print(f"📖 [falcon.io] Loaded '{f_name}' into '{target_var}'")
+                        idx += 7
+                    
+                    # Basic Assign: secure let x = 10
+                    else:
+                        val = self.tokens[idx+3][1].strip('"')
+                        self.variables[target_var] = int(val) if val.isdigit() else val
+                        print(f"🛡️ [Line {line}] Secured: {target_var}")
+                        idx += 4
+                except:
+                    self.report_error("Invalid variable declaration or math operation", line)
+
+            # 2. File Writing
             elif kind == 'FILE_IO' and value == 'file.write':
                 try:
-                    f_name = self.tokens[idx+2][1].strip('"')
-                    f_content = self.tokens[idx+4][1].strip('"')
-                    
-                    final_name = self.variables.get(f_name, f_name)
-                    final_content = self.variables.get(f_content, f_content)
-                    
-                    with open(final_name, 'w') as f:
-                        f.write(str(final_content))
-                    print(f"💾 [falcon.io] Written to '{final_name}'")
+                    f_name = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
+                    f_data = self.variables.get(self.tokens[idx+4][1].strip('"'), self.tokens[idx+4][1].strip('"'))
+                    with open(f_name, 'w') as f:
+                        f.write(str(f_data))
+                    print(f"💾 [falcon.io] Written to '{f_name}'")
                     idx += 6
                 except: self.report_error("File write failed", line)
 
@@ -113,7 +131,7 @@ class FalconEngine:
                     while idx < len(self.tokens) and self.tokens[idx][0] != 'ENDIF': idx += 1
                 idx += 4
 
-            # 5. Network
+            # 5. Network Send
             elif kind == 'NET_SEND':
                 msg = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
                 try:
@@ -128,5 +146,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         FalconEngine().run(sys.argv[1])
     else:
-        print("Falcon v3.2 - Usage: python falcon_engine.py <file.fcn>")
-            
+        print("Falcon v3.3 - Usage: python falcon_engine.py <file.fcn>")
+                
