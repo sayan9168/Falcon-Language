@@ -1,0 +1,11 @@
+// Testing Math and If-Logic
+secure let x = 50
+secure let y = 25
+secure let result = x + y
+
+print("Result of 50 + 25 is:")
+print(result)
+
+if result > 60
+    print("Logic Test: Passed!")
+endif
