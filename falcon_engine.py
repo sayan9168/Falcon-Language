@@ -10,6 +10,7 @@ TOKEN_TYPES = [
     ('ENDIF',      r'endif'),
     ('PRINT',      r'print'),
     ('NET_SEND',   r'network\.send'),
+    ('FILE_IO',    r'file\.(write|read)'), # New Token for Standard Library
     ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ('OP',         r'==|!=|>=|<=|>|<'),
     ('ASSIGN',     r'='),
@@ -17,6 +18,7 @@ TOKEN_TYPES = [
     ('NUMBER',     r'\d+'),
     ('LPAREN',     r'\('),
     ('RPAREN',     r'\)'),
+    ('COMMA',      r','),
     ('NEWLINE',    r'\n'),
     ('SKIP',       r'[ \t]+'),
     ('MISMATCH',   r'.'),
@@ -62,77 +64,69 @@ class FalconEngine:
         while idx < len(self.tokens):
             kind, value, line = self.tokens[idx]
 
-            # 1. Variable Declaration Error Check
+            # 1. Variable Declaration
             if kind == 'SECURE_LET':
-                try:
-                    if self.tokens[idx+1][0] != 'ID':
-                        self.report_error("Expected a variable name after 'secure let'", line)
-                    var_name = self.tokens[idx+1][1]
-                    
-                    if self.tokens[idx+2][0] != 'ASSIGN':
-                        self.report_error(f"Expected '=' after variable '{var_name}'", line)
-                    
-                    val_kind = self.tokens[idx+3][0]
-                    if val_kind not in ['STRING', 'NUMBER', 'ID']:
-                        self.report_error(f"Expected a value (string or number) for variable '{var_name}'", line)
-                    
+                name = self.tokens[idx+1][1]
+                # Check if it's a file read assignment: secure let x = file.read(...)
+                if self.tokens[idx+3][1] == 'file.read':
+                    file_name = self.tokens[idx+5][1].strip('"')
+                    try:
+                        with open(file_name, 'r') as f:
+                            self.variables[name] = f.read()
+                        print(f"📖 [falcon.io] Loaded '{file_name}' into '{name}'")
+                    except: self.report_error(f"Could not read file {file_name}", line)
+                    idx += 7
+                else:
                     val = self.tokens[idx+3][1].strip('"')
-                    self.variables[var_name] = int(val) if val.isdigit() else val
-                    print(f"🛡️ [Line {line}] Shield-Core Secured: {var_name}")
+                    self.variables[name] = int(val) if val.isdigit() else val
+                    print(f"🛡️ [Line {line}] Secured: {name}")
                     idx += 4
-                except IndexError:
-                    self.report_error("Incomplete 'secure let' statement", line)
 
-            # 2. Print Statement Error Check
+            # 2. File Writing (Standard Library)
+            elif kind == 'FILE_IO' and value == 'file.write':
+                try:
+                    f_name = self.tokens[idx+2][1].strip('"')
+                    f_content = self.tokens[idx+4][1].strip('"')
+                    
+                    final_name = self.variables.get(f_name, f_name)
+                    final_content = self.variables.get(f_content, f_content)
+                    
+                    with open(final_name, 'w') as f:
+                        f.write(str(final_content))
+                    print(f"💾 [falcon.io] Written to '{final_name}'")
+                    idx += 6
+                except: self.report_error("File write failed", line)
+
+            # 3. Print
             elif kind == 'PRINT':
-                try:
-                    if self.tokens[idx+1][0] != 'LPAREN' or self.tokens[idx+3][0] != 'RPAREN':
-                        self.report_error("Syntax error in print statement. Use print(\"message\")", line)
-                    content = self.tokens[idx+2][1].strip('"')
-                    output = self.variables.get(content, content)
-                    print(f"🦅 [Falcon Output]: {output}")
-                    idx += 4
-                except IndexError:
-                    self.report_error("Incomplete print statement", line)
+                content = self.tokens[idx+2][1].strip('"')
+                print(f"🦅 [Falcon]: {self.variables.get(content, content)}")
+                idx += 4
 
-            # 3. IF Logic Error Check
+            # 4. If Logic
             elif kind == 'IF':
-                try:
-                    var_name = self.tokens[idx+1][1]
-                    op = self.tokens[idx+2][1]
-                    target = int(self.tokens[idx+3][1])
-                    current = self.variables.get(var_name, 0)
-                    
-                    check = eval(f"{current} {op} {target}")
-                    print(f"⚖️ [Logic] Line {line}: Condition ({var_name} {op} {target}) is {check}")
-                    
-                    if not check:
-                        while idx < len(self.tokens) and self.tokens[idx][0] != 'ENDIF':
-                            idx += 1
-                        if idx >= len(self.tokens):
-                            self.report_error("Missing 'endif' for 'if' statement", line)
-                    else:
-                        idx += 4
-                except (IndexError, ValueError):
-                    self.report_error("Invalid if condition syntax", line)
+                var = self.tokens[idx+1][1]
+                op = self.tokens[idx+2][1]
+                target = int(self.tokens[idx+3][1])
+                check = eval(f"{self.variables.get(var, 0)} {op} {target}")
+                if not check:
+                    while idx < len(self.tokens) and self.tokens[idx][0] != 'ENDIF': idx += 1
+                idx += 4
 
-            # 4. Networking Error Check
+            # 5. Network
             elif kind == 'NET_SEND':
+                msg = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
                 try:
-                    msg_var = self.tokens[idx+2][1].strip('"')
-                    msg_val = self.variables.get(msg_var, msg_var)
-                    print(f"📡 [Line {line}] Transmitting via Falcon Net: {msg_val}")
-                    # ... Network request logic stays same ...
-                    idx += 4
-                except IndexError:
-                    self.report_error("Incomplete network.send statement", line)
+                    requests.post(self.bridge_url, json={"message": msg}, timeout=5)
+                    print(f"📡 Transmitted: {msg}")
+                except: print("❌ Network Fail")
+                idx += 4
 
-            elif kind == 'ENDIF':
-                idx += 1
-            else:
-                idx += 1
+            else: idx += 1
 
 if __name__ == "__main__":
-    engine = FalconEngine()
-    engine.run(sys.argv[1])
-    
+    if len(sys.argv) > 1:
+        FalconEngine().run(sys.argv[1])
+    else:
+        print("Falcon v3.2 - Usage: python falcon_engine.py <file.fcn>")
+            
