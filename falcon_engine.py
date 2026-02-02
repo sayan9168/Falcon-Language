@@ -8,11 +8,13 @@ TOKEN_TYPES = [
     ('SECURE_LET', r'secure let'),
     ('IF',         r'if'),
     ('ENDIF',      r'endif'),
+    ('REPEAT',     r'repeat'),   # New: Loop start
+    ('ENDREPEAT',  r'endrepeat'),# New: Loop end
     ('PRINT',      r'print'),
     ('NET_SEND',   r'network\.send'),
     ('FILE_IO',    r'file\.(write|read)'),
     ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
-    ('OP',         r'==|!=|>=|<=|>|<|\+|\-|\*|\/'), # Added Math Operators
+    ('OP',         r'==|!=|>=|<=|>|<|\+|\-|\*|\/'),
     ('ASSIGN',     r'='),
     ('STRING',     r'".*?"'),
     ('NUMBER',     r'\d+'),
@@ -55,96 +57,86 @@ class FalconEngine:
             with open(filename, 'r') as f:
                 code = f.read()
             self.tokenize(code)
-            self.execute()
+            self.execute(0, len(self.tokens))
         except FileNotFoundError:
             print(f"❌ [File Error] File '{filename}' not found.")
 
-    def execute(self):
-        idx = 0
-        while idx < len(self.tokens):
+    def execute(self, start_idx, end_idx):
+        idx = start_idx
+        while idx < end_idx:
             kind, value, line = self.tokens[idx]
 
-            # 1. Variable Declaration & Math (falcon.math)
+            # 1. Variable Declaration & Math
             if kind == 'SECURE_LET':
                 try:
                     target_var = self.tokens[idx+1][1]
-                    
-                    # Case for Math: secure let x = y + 10
                     if idx + 4 < len(self.tokens) and self.tokens[idx+4][0] == 'OP' and self.tokens[idx+4][1] in '+-*/':
-                        left_val = self.tokens[idx+3][1]
-                        operator = self.tokens[idx+4][1]
-                        right_val = self.tokens[idx+5][1]
-
-                        v1 = self.variables.get(left_val, int(left_val) if left_val.isdigit() else left_val)
-                        v2 = self.variables.get(right_val, int(right_val) if right_val.isdigit() else right_val)
-
-                        if operator == '+': res = v1 + v2
-                        elif operator == '-': res = v1 - v2
-                        elif operator == '*': res = v1 * v2
-                        elif operator == '/': res = v1 / v2
-                        
+                        v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
+                        v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
+                        op = self.tokens[idx+4][1]
+                        if op == '+': res = v1 + v2
+                        elif op == '-': res = v1 - v2
+                        elif op == '*': res = v1 * v2
+                        elif op == '/': res = v1 / v2
                         self.variables[target_var] = res
-                        print(f"🧬 [falcon.math] {target_var} = {res}")
+                        print(f"🧬 [Math] {target_var} = {res}")
                         idx += 6
-                    
-                    # Case for File Read: secure let x = file.read(...)
                     elif self.tokens[idx+3][1] == 'file.read':
                         f_name = self.tokens[idx+5][1].strip('"')
-                        with open(f_name, 'r') as f:
-                            self.variables[target_var] = f.read()
-                        print(f"📖 [falcon.io] Loaded '{f_name}' into '{target_var}'")
+                        with open(f_name, 'r') as f: self.variables[target_var] = f.read()
+                        print(f"📖 [IO] Loaded '{f_name}'")
                         idx += 7
-                    
-                    # Basic Assign: secure let x = 10
                     else:
                         val = self.tokens[idx+3][1].strip('"')
                         self.variables[target_var] = int(val) if val.isdigit() else val
                         print(f"🛡️ [Line {line}] Secured: {target_var}")
                         idx += 4
-                except:
-                    self.report_error("Invalid variable declaration or math operation", line)
+                except: self.report_error("Invalid declaration", line)
 
-            # 2. File Writing
-            elif kind == 'FILE_IO' and value == 'file.write':
+            # 2. Loop (Repeat)
+            elif kind == 'REPEAT':
                 try:
-                    f_name = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
-                    f_data = self.variables.get(self.tokens[idx+4][1].strip('"'), self.tokens[idx+4][1].strip('"'))
-                    with open(f_name, 'w') as f:
-                        f.write(str(f_data))
-                    print(f"💾 [falcon.io] Written to '{f_name}'")
-                    idx += 6
-                except: self.report_error("File write failed", line)
+                    times = int(self.tokens[idx+1][1])
+                    loop_start = idx + 2
+                    # Find matching endrepeat
+                    loop_end = loop_start
+                    depth = 1
+                    while depth > 0 and loop_end < end_idx:
+                        if self.tokens[loop_end][0] == 'REPEAT': depth += 1
+                        if self.tokens[loop_end][0] == 'ENDREPEAT': depth -= 1
+                        loop_end += 1
+                    
+                    for _ in range(times):
+                        self.execute(loop_start, loop_end - 1)
+                    idx = loop_end
+                except: self.report_error("Invalid loop structure", line)
 
-            # 3. Print
-            elif kind == 'PRINT':
-                content = self.tokens[idx+2][1].strip('"')
-                print(f"🦅 [Falcon]: {self.variables.get(content, content)}")
-                idx += 4
-
-            # 4. If Logic
+            # 3. If Logic
             elif kind == 'IF':
-                var = self.tokens[idx+1][1]
+                var = self.variables.get(self.tokens[idx+1][1], 0)
                 op = self.tokens[idx+2][1]
                 target = int(self.tokens[idx+3][1])
-                check = eval(f"{self.variables.get(var, 0)} {op} {target}")
-                if not check:
-                    while idx < len(self.tokens) and self.tokens[idx][0] != 'ENDIF': idx += 1
+                if not eval(f"{var} {op} {target}"):
+                    while idx < end_idx and self.tokens[idx][0] != 'ENDIF': idx += 1
                 idx += 4
 
-            # 5. Network Send
+            # 4. Standard I/O & Network
+            elif kind == 'PRINT':
+                print(f"🦅 [Falcon]: {self.variables.get(self.tokens[idx+2][1].strip('\"'), self.tokens[idx+2][1].strip('\"'))}")
+                idx += 4
+            elif kind == 'FILE_IO' and value == 'file.write':
+                f_name = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
+                f_data = self.variables.get(self.tokens[idx+4][1].strip('"'), self.tokens[idx+4][1].strip('"'))
+                with open(f_name, 'w') as f: f.write(str(f_data))
+                print(f"💾 [IO] Written to '{f_name}'"); idx += 6
             elif kind == 'NET_SEND':
                 msg = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
-                try:
-                    requests.post(self.bridge_url, json={"message": msg}, timeout=5)
-                    print(f"📡 Transmitted: {msg}")
-                except: print("❌ Network Fail")
-                idx += 4
-
+                try: requests.post(self.bridge_url, json={"message": msg}, timeout=5); print(f"📡 Transmitted: {msg}")
+                except: print("❌ Network Fail"); idx += 4
+            
             else: idx += 1
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        FalconEngine().run(sys.argv[1])
-    else:
-        print("Falcon v3.3 - Usage: python falcon_engine.py <file.fcn>")
+    if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
+    else: print("Falcon v3.4 - Usage: python falcon_engine.py <file.fcn>")
                 
