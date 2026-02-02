@@ -1,111 +1,125 @@
-import base64
-import re
 import sys
-import os
+import re
+import requests
 
-class FalconShieldCore:
+# --- TOKEN DEFINITIONS ---
+TOKEN_TYPES = [
+    ('COMMENT',    r'//.*'),
+    ('SECURE_LET', r'secure let'),
+    ('IF',         r'if'),
+    ('ENDIF',      r'endif'),
+    ('PRINT',      r'print'),
+    ('NET_SEND',   r'network\.send'),
+    ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
+    ('OP',         r'==|!=|>=|<=|>|<'),
+    ('ASSIGN',     r'='),
+    ('STRING',     r'".*?"'),
+    ('NUMBER',     r'\d+'),
+    ('LPAREN',     r'\('),
+    ('RPAREN',     r'\)'),
+    ('NEWLINE',    r'\n'),
+    ('SKIP',       r'[ \t]+'),
+    ('MISMATCH',   r'.'),
+]
+
+class FalconEngine:
     def __init__(self):
-        self.memory = {}
-        self.version = "1.0.2"
+        self.variables = {}
+        self.tokens = []
+        self.line_num = 1
+        # আপনার সেই Serveo লিঙ্ক
+        self.bridge_url = "https://f13080e7d994051c-152-59-162-148.serveousercontent.com/send"
 
-    def encrypt_data(self, data):
-        encoded = base64.b64encode(str(data).encode()).decode()
-        return f"FALCON_SECURE_{encoded}"
-
-    def execute_code(self, code_text):
-        lines = code_text.split('\n')
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            if not line or line.startswith("//"): 
-                i += 1
+    def tokenize(self, code):
+        tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in TOKEN_TYPES)
+        for mo in re.finditer(tok_regex, code):
+            kind = mo.lastgroup
+            value = mo.group()
+            if kind == 'NEWLINE':
+                self.line_num += 1
+            elif kind == 'SKIP' or kind == 'COMMENT':
                 continue
+            elif kind == 'MISMATCH':
+                print(f"❌ [Falcon Error] Unexpected character '{value}' at line {self.line_num}")
+                sys.exit(1)
+            else:
+                self.tokens.append((kind, value, self.line_num))
 
-            try:
-                # --- 1. ASK Command (User Input) ---
-                if line.startswith('ask '):
-                    match = re.search(r'ask (\w+)\s*=\s*"(.*?)"', line)
-                    if match:
-                        var_name, prompt = match.group(1), match.group(2)
-                        user_val = input(f"❓ {prompt} ")
-                        self.memory[var_name] = user_val
-                    i += 1
-                    continue
+    def run(self, filename):
+        try:
+            with open(filename, 'r') as f:
+                code = f.read()
+            self.tokenize(code)
+            self.execute()
+        except FileNotFoundError:
+            print(f"❌ Error: File '{filename}' not found.")
 
-                # --- 2. REPEAT Loop ---
-                if line.startswith('repeat '):
-                    times_match = re.search(r'repeat (\d+) times', line)
-                    if times_match:
-                        count = int(times_match.group(1))
-                        loop_body = []
-                        i += 1
-                        while i < len(lines) and lines[i].strip() != "endloop":
-                            loop_body.append(lines[i])
-                            i += 1
-                        for _ in range(count):
-                            self.execute_code("\n".join(loop_body))
-                    i += 1
-                    continue
+    def execute(self):
+        idx = 0
+        while idx < len(self.tokens):
+            kind, value, line = self.tokens[idx]
 
-                # --- 3. IF Logic ---
-                if line.startswith('if '):
-                    condition = line[3:].strip()
-                    if not eval(condition, {}, self.memory):
-                        while i < len(lines) and lines[i].strip() != "endif":
-                            i += 1
-                    i += 1
-                    continue
+            # ১. Variable Declaration (secure let)
+            if kind == 'SECURE_LET':
+                var_name = self.tokens[idx+1][1]
+                # `=` এবং মান চেক করা
+                val = self.tokens[idx+3][1].strip('"')
+                self.variables[var_name] = int(val) if val.isdigit() else val
+                print(f"🛡️ [Line {line}] Shield-Core Secured: {var_name}")
+                idx += 4
 
-                # --- 4. SAY Command ---
-                if line.startswith('say '):
-                    content = re.findall(r'"(.*?)"', line)
-                    if content:
-                        print(f"🗣️ Output: {content[0]}")
+            # ২. Output (print)
+            elif kind == 'PRINT':
+                content = self.tokens[idx+2][1].strip('"')
+                output = self.variables.get(content, content)
+                print(f"🦅 [Falcon Output]: {output}")
+                idx += 4
+
+            # ৩. Logic (if ... endif)
+            elif kind == 'IF':
+                var_name = self.tokens[idx+1][1]
+                op = self.tokens[idx+2][1]
+                target = int(self.tokens[idx+3][1])
+                current = self.variables.get(var_name, 0)
+                
+                check = eval(f"{current} {op} {target}")
+                print(f"⚖️ [Logic] Line {line}: Condition ({var_name} {op} {target}) is {check}")
+                
+                if not check:
+                    # endif না পাওয়া পর্যন্ত সব স্কিপ করবে
+                    while idx < len(self.tokens) and self.tokens[idx][0] != 'ENDIF':
+                        idx += 1
+                else:
+                    idx += 4
+
+            # ৪. Networking (network.send)
+            elif kind == 'NET_SEND':
+                msg_var = self.tokens[idx+2][1].strip('"')
+                msg_val = self.variables.get(msg_var, msg_var)
+                
+                print(f"📡 [Line {line}] Transmitting via Falcon Net: {msg_val}")
+                
+                try:
+                    response = requests.post(self.bridge_url, json={"message": msg_val, "sender": "Falcon_User"}, timeout=5)
+                    if response.status_code == 200:
+                        print("✅ Status: Delivered via Satellite Link!")
                     else:
-                        expr = line[4:].strip()
-                        print(f"🗣️ Result: {eval(expr, {}, self.memory)}")
+                        print(f"⚠️ Status: Server Error ({response.status_code})")
+                except:
+                    print("❌ Error: Transmission Failed. Is the tunnel active?")
+                idx += 4
 
-                # --- 5. Variable Assignment (LET) ---
-                elif line.startswith('let '):
-                    match = re.search(r'let (\w+)\s*=\s*(.*)', line)
-                    if match:
-                        name, expr = match.group(1), match.group(2).strip()
-                        self.memory[name] = eval(expr, {}, self.memory) if '"' not in expr else expr.replace('"', '')
-
-                # --- 6. SECURE LET ---
-                elif line.startswith('secure let '):
-                    match = re.search(r'secure let (\w+)\s*=\s*(.*)', line)
-                    if match:
-                        name, expr = match.group(1), match.group(2).strip()
-                        val = eval(expr, {}, self.memory) if '"' not in expr else expr.replace('"', '')
-                        self.memory[name] = self.encrypt_data(val)
-
-            except Exception as e:
-                print(f"🚨 Falcon Error at line {i+1}: {e}")
+            elif kind == 'ENDIF':
+                idx += 1
             
-            i += 1
-
-    def run_file(self, file_path):
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                self.execute_code(file.read())
-        else:
-            print(f"❌ File '{file_path}' not found.")
+            else:
+                idx += 1
 
 if __name__ == "__main__":
-    engine = FalconShieldCore()
-    if len(sys.argv) > 1:
-        engine.run_file(sys.argv[1])
+    if len(sys.argv) < 2:
+        print("Falcon Programming Language v3.0")
+        print("Usage: python falcon_engine.py <file.fcn>")
     else:
-        # Final Test Demo
-        demo = """
-        say "--- Welcome to Falcon v1.0.2 ---"
-        ask name = "What is your name, pilot?"
-        say "Hello, " + name
-        let health = 100
-        if health > 50
-            say "Falcon Shield is strong!"
-        endif
-        """
-        engine.execute_code(demo)
+        engine = FalconEngine()
+        engine.run(sys.argv[1])
         
