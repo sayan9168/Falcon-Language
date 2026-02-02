@@ -5,11 +5,13 @@ import requests
 # --- TOKEN DEFINITIONS ---
 TOKEN_TYPES = [
     ('COMMENT',    r'//.*'),
+    ('FUNC_DEF',   r'func'),     # New: Function definition
+    ('ENDFUNC',    r'endfunc'),  # New: Function end
     ('SECURE_LET', r'secure let'),
     ('IF',         r'if'),
     ('ENDIF',      r'endif'),
-    ('REPEAT',     r'repeat'),   # New: Loop start
-    ('ENDREPEAT',  r'endrepeat'),# New: Loop end
+    ('REPEAT',     r'repeat'),
+    ('ENDREPEAT',  r'endrepeat'),
     ('PRINT',      r'print'),
     ('NET_SEND',   r'network\.send'),
     ('FILE_IO',    r'file\.(write|read)'),
@@ -20,7 +22,6 @@ TOKEN_TYPES = [
     ('NUMBER',     r'\d+'),
     ('LPAREN',     r'\('),
     ('RPAREN',     r'\)'),
-    ('COMMA',      r','),
     ('NEWLINE',    r'\n'),
     ('SKIP',       r'[ \t]+'),
     ('MISMATCH',   r'.'),
@@ -29,6 +30,7 @@ TOKEN_TYPES = [
 class FalconEngine:
     def __init__(self):
         self.variables = {}
+        self.functions = {} # To store function code blocks
         self.tokens = []
         self.line_num = 1
         self.bridge_url = "https://f13080e7d994051c-152-59-162-148.serveousercontent.com/send"
@@ -43,14 +45,10 @@ class FalconEngine:
         for mo in re.finditer(tok_regex, code):
             kind = mo.lastgroup
             value = mo.group()
-            if kind == 'NEWLINE':
-                self.line_num += 1
-            elif kind == 'SKIP' or kind == 'COMMENT':
-                continue
-            elif kind == 'MISMATCH':
-                self.report_error(f"Unexpected character '{value}'", self.line_num)
-            else:
-                self.tokens.append((kind, value, self.line_num))
+            if kind == 'NEWLINE': self.line_num += 1
+            elif kind == 'SKIP' or kind == 'COMMENT': continue
+            elif kind == 'MISMATCH': self.report_error(f"Unexpected character '{value}'", self.line_num)
+            else: self.tokens.append((kind, value, self.line_num))
 
     def run(self, filename):
         try:
@@ -66,11 +64,24 @@ class FalconEngine:
         while idx < end_idx:
             kind, value, line = self.tokens[idx]
 
-            # 1. Variable Declaration & Math
-            if kind == 'SECURE_LET':
+            # 1. Function Definition
+            if kind == 'FUNC_DEF':
+                func_name = self.tokens[idx+1][1]
+                idx += 2
+                func_start = idx
+                depth = 1
+                while depth > 0 and idx < end_idx:
+                    if self.tokens[idx][0] == 'FUNC_DEF': depth += 1
+                    if self.tokens[idx][0] == 'ENDFUNC': depth -= 1
+                    idx += 1
+                self.functions[func_name] = (func_start, idx - 1)
+                continue
+
+            # 2. Variable Declaration & Math
+            elif kind == 'SECURE_LET':
                 try:
                     target_var = self.tokens[idx+1][1]
-                    if idx + 4 < len(self.tokens) and self.tokens[idx+4][0] == 'OP' and self.tokens[idx+4][1] in '+-*/':
+                    if idx + 4 < end_idx and self.tokens[idx+4][0] == 'OP' and self.tokens[idx+4][1] in '+-*/':
                         v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
                         v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
                         op = self.tokens[idx+4][1]
@@ -93,34 +104,33 @@ class FalconEngine:
                         idx += 4
                 except: self.report_error("Invalid declaration", line)
 
-            # 2. Loop (Repeat)
+            # 3. Loop (Repeat)
             elif kind == 'REPEAT':
-                try:
-                    times = int(self.tokens[idx+1][1])
-                    loop_start = idx + 2
-                    # Find matching endrepeat
-                    loop_end = loop_start
-                    depth = 1
-                    while depth > 0 and loop_end < end_idx:
-                        if self.tokens[loop_end][0] == 'REPEAT': depth += 1
-                        if self.tokens[loop_end][0] == 'ENDREPEAT': depth -= 1
-                        loop_end += 1
-                    
-                    for _ in range(times):
-                        self.execute(loop_start, loop_end - 1)
-                    idx = loop_end
-                except: self.report_error("Invalid loop structure", line)
+                times = int(self.tokens[idx+1][1])
+                loop_start = idx + 2
+                depth, loop_end = 1, loop_start
+                while depth > 0 and loop_end < end_idx:
+                    if self.tokens[loop_end][0] == 'REPEAT': depth += 1
+                    if self.tokens[loop_end][0] == 'ENDREPEAT': depth -= 1
+                    loop_end += 1
+                for _ in range(times): self.execute(loop_start, loop_end - 1)
+                idx = loop_end
 
-            # 3. If Logic
+            # 4. If Logic
             elif kind == 'IF':
                 var = self.variables.get(self.tokens[idx+1][1], 0)
-                op = self.tokens[idx+2][1]
-                target = int(self.tokens[idx+3][1])
+                op, target = self.tokens[idx+2][1], int(self.tokens[idx+3][1])
                 if not eval(f"{var} {op} {target}"):
                     while idx < end_idx and self.tokens[idx][0] != 'ENDIF': idx += 1
                 idx += 4
 
-            # 4. Standard I/O & Network
+            # 5. Function Call
+            elif kind == 'ID' and value in self.functions:
+                f_start, f_end = self.functions[value]
+                self.execute(f_start, f_end)
+                idx += 1
+
+            # 6. Commands (Print, IO, Network)
             elif kind == 'PRINT':
                 print(f"🦅 [Falcon]: {self.variables.get(self.tokens[idx+2][1].strip('\"'), self.tokens[idx+2][1].strip('\"'))}")
                 idx += 4
@@ -138,5 +148,5 @@ class FalconEngine:
 
 if __name__ == "__main__":
     if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
-    else: print("Falcon v3.4 - Usage: python falcon_engine.py <file.fcn>")
-                
+    else: print("Falcon v3.5 - Usage: python falcon_engine.py <file.fcn>")
+                        
