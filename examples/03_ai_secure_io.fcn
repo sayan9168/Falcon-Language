@@ -1,0 +1,9 @@
+// Testing AI and Secure File I/O
+secure let topic = "Future of AI in 2026"
+secure let response = ai.ask(topic)
+
+print("AI Response:")
+print(response)
+
+file.write("ai_report.txt", response)
+print("Report saved securely.")
