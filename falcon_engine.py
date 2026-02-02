@@ -1,12 +1,14 @@
 import sys
 import re
 import requests
+import os # For sandbox implementation
+# import google.generativeai as genai # Uncomment this if you have the gemini API key
 
 # --- TOKEN DEFINITIONS ---
 TOKEN_TYPES = [
     ('COMMENT',    r'//.*'),
-    ('FUNC_DEF',   r'func'),     # New: Function definition
-    ('ENDFUNC',    r'endfunc'),  # New: Function end
+    ('FUNC_DEF',   r'func'),
+    ('ENDFUNC',    r'endfunc'),
     ('SECURE_LET', r'secure let'),
     ('IF',         r'if'),
     ('ENDIF',      r'endif'),
@@ -15,6 +17,7 @@ TOKEN_TYPES = [
     ('PRINT',      r'print'),
     ('NET_SEND',   r'network\.send'),
     ('FILE_IO',    r'file\.(write|read)'),
+    ('AI_CALL',    r'ai\.ask'), # New: AI Integration
     ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ('OP',         r'==|!=|>=|<=|>|<|\+|\-|\*|\/'),
     ('ASSIGN',     r'='),
@@ -30,15 +33,32 @@ TOKEN_TYPES = [
 class FalconEngine:
     def __init__(self):
         self.variables = {}
-        self.functions = {} # To store function code blocks
+        self.functions = {}
         self.tokens = []
         self.line_num = 1
         self.bridge_url = "https://f13080e7d994051c-152-59-162-148.serveousercontent.com/send"
+        
+        # --- SHIELD-CORE SANDBOX CONFIG ---
+        self.base_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else os.getcwd()
+        self.allowed_paths = [
+            os.path.join(self.base_dir, 'logs'), # Example: allow 'logs' folder
+            self.base_dir # Allow current directory
+        ]
+        # For actual AI calls, you'd configure your API key here
+        # genai.configure(api_key="YOUR_GEMINI_API_KEY")
+        # self.ai_model = genai.GenerativeModel('gemini-pro')
 
     def report_error(self, message, line):
         print(f"\n❌ [Falcon Error] {message}")
         print(f"📍 Location: Line {line}\n")
         sys.exit(1)
+
+    def is_path_allowed(self, filepath):
+        abs_filepath = os.path.abspath(filepath)
+        for allowed_p in self.allowed_paths:
+            if abs_filepath.startswith(os.path.abspath(allowed_p)):
+                return True
+        return False
 
     def tokenize(self, code):
         tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in TOKEN_TYPES)
@@ -81,6 +101,7 @@ class FalconEngine:
             elif kind == 'SECURE_LET':
                 try:
                     target_var = self.tokens[idx+1][1]
+                    # Math operations
                     if idx + 4 < end_idx and self.tokens[idx+4][0] == 'OP' and self.tokens[idx+4][1] in '+-*/':
                         v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
                         v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
@@ -92,17 +113,33 @@ class FalconEngine:
                         self.variables[target_var] = res
                         print(f"🧬 [Math] {target_var} = {res}")
                         idx += 6
+                    # File Read
                     elif self.tokens[idx+3][1] == 'file.read':
                         f_name = self.tokens[idx+5][1].strip('"')
+                        if not self.is_path_allowed(f_name): self.report_error(f"Shield-Core: Access Denied to '{f_name}'", line)
                         with open(f_name, 'r') as f: self.variables[target_var] = f.read()
                         print(f"📖 [IO] Loaded '{f_name}'")
                         idx += 7
+                    # AI Call
+                    elif self.tokens[idx+3][1] == 'ai.ask':
+                        ai_query = self.variables.get(self.tokens[idx+5][1].strip('"'), self.tokens[idx+5][1].strip('"'))
+                        print(f"🧠 [AI] Querying: '{ai_query}'...")
+                        # try:
+                        #     response = self.ai_model.generate_content(ai_query)
+                        #     self.variables[target_var] = response.text
+                        #     print(f"✅ [AI] Response stored in '{target_var}'")
+                        # except Exception as e:
+                        #     self.report_error(f"AI call failed: {e}", line)
+                        self.variables[target_var] = "AI functionality requires API key and proper setup." # Placeholder
+                        print("⚠️ [AI] Placeholder: AI functionality requires API key and setup.")
+                        idx += 7
+                    # Basic Assignment
                     else:
                         val = self.tokens[idx+3][1].strip('"')
                         self.variables[target_var] = int(val) if val.isdigit() else val
                         print(f"🛡️ [Line {line}] Secured: {target_var}")
                         idx += 4
-                except: self.report_error("Invalid declaration", line)
+                except: self.report_error("Invalid variable declaration or operation", line)
 
             # 3. Loop (Repeat)
             elif kind == 'REPEAT':
@@ -137,6 +174,7 @@ class FalconEngine:
             elif kind == 'FILE_IO' and value == 'file.write':
                 f_name = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
                 f_data = self.variables.get(self.tokens[idx+4][1].strip('"'), self.tokens[idx+4][1].strip('"'))
+                if not self.is_path_allowed(f_name): self.report_error(f"Shield-Core: Access Denied to '{f_name}'", line)
                 with open(f_name, 'w') as f: f.write(str(f_data))
                 print(f"💾 [IO] Written to '{f_name}'"); idx += 6
             elif kind == 'NET_SEND':
@@ -148,5 +186,5 @@ class FalconEngine:
 
 if __name__ == "__main__":
     if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
-    else: print("Falcon v3.5 - Usage: python falcon_engine.py <file.fcn>")
-                        
+    else: print("Falcon v4.0 - Usage: python falcon_engine.py <file.fcn>")
+
