@@ -2,7 +2,7 @@ import sys
 import re
 import os
 import requests
-import google.generativeai as genai
+from google import genai  # New Google AI SDK
 
 # --- TOKEN DEFINITIONS ---
 TOKEN_TYPES = [
@@ -36,18 +36,15 @@ TOKEN_TYPES = [
 class FalconEngine:
     def __init__(self):
         self.variables = {}
-        self.functions = {}
         self.tokens = []
         self.line_num = 1
         self.bridge_url = "https://f13080e7d994051c-152-59-162-148.serveousercontent.com/send"
         
-        # AI Config
+        # New AI Config for 2026
         self.api_key = "YOUR_GEMINI_API_KEY"
         if self.api_key != "YOUR_GEMINI_API_KEY":
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-pro')
+            self.client = genai.Client(api_key=self.api_key)
         
-        # Shield-Core Sandbox
         self.base_dir = os.getcwd()
 
     def report_error(self, error_type, message, line):
@@ -90,22 +87,19 @@ class FalconEngine:
             if kind == 'IMPORT':
                 module_name = self.tokens[idx+1][1].strip('"') + ".fcn"
                 if os.path.exists(module_name):
-                    with open(module_name, 'r') as f:
-                        m_code = f.read()
-                    # Recursive tokenization for module
                     sub_engine = FalconEngine()
-                    sub_engine.variables = self.variables # Share memory
+                    sub_engine.variables = self.variables
                     sub_engine.run(module_name)
                     self.variables.update(sub_engine.variables)
                 else:
                     self.report_error("Import", f"Module '{module_name}' missing", line)
                 idx += 2
 
-            # 2. Secure Let (Variables, Math, AI, Dict)
+            # 2. Secure Let (Variables, AI, Dict, Math)
             elif kind == 'SECURE_LET':
                 target = self.tokens[idx+1][1]
                 
-                # Dictionary / Data Structure
+                # Dictionary Support
                 if self.tokens[idx+3][0] == 'LBRACE':
                     idx += 4
                     obj = {}
@@ -118,18 +112,21 @@ class FalconEngine:
                     self.variables[target] = obj
                     idx += 1
                 
-                # AI Integration
+                # AI Support (Updated for Gemini 2.0)
                 elif self.tokens[idx+3][1] == 'ai.ask':
                     prompt = self.tokens[idx+5][1].strip('"')
-                    print(f"🧠 [Falcon AI] Thinking: {prompt}...")
+                    print(f"🧠 [Falcon AI] Querying Gemini 2.0...")
                     try:
-                        response = self.model.generate_content(prompt)
+                        response = self.client.models.generate_content(
+                            model="gemini-2.0-flash",
+                            contents=prompt
+                        )
                         self.variables[target] = response.text
-                    except:
-                        self.variables[target] = "AI Error: Key/Network issue"
+                    except Exception as e:
+                        self.variables[target] = f"AI Error: {str(e)}"
                     idx += 7
                 
-                # Math Operations
+                # Math Logic
                 elif idx + 4 < end and self.tokens[idx+4][0] == 'OP':
                     v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
                     v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
@@ -144,7 +141,13 @@ class FalconEngine:
                     self.variables[target] = self.tokens[idx+3][1].strip('"')
                     idx += 4
 
-            # 3. Loops (Repeat)
+            # 3. Print Output
+            elif kind == 'PRINT':
+                content = self.tokens[idx+2][1].strip('"')
+                print(f"🦅 [Falcon]: {self.variables.get(content, content)}")
+                idx += 4
+
+            # 4. Repeat Loops
             elif kind == 'REPEAT':
                 times = int(self.tokens[idx+1][1])
                 loop_start = idx + 2
@@ -156,51 +159,22 @@ class FalconEngine:
                 for _ in range(times): self.execute(loop_start, loop_end - 1)
                 idx = loop_end
 
-            # 4. If Logic
-            elif kind == 'IF':
-                var = self.variables.get(self.tokens[idx+1][1], 0)
-                op, target_val = self.tokens[idx+2][1], int(self.tokens[idx+3][1])
-                if not eval(f"{var} {op} {target_val}"):
-                    while idx < end and self.tokens[idx][0] != 'ENDIF': idx += 1
-                idx += 4
-
-            # 5. IO & Network
-            elif kind == 'PRINT':
-                content = self.tokens[idx+2][1].strip('"')
-                print(f"🦅 [Falcon]: {self.variables.get(content, content)}")
-                idx += 4
+            # 5. Shield-Core File IO
             elif kind == 'FILE_IO' and val == 'file.write':
                 f_name = self.tokens[idx+2][1].strip('"')
                 f_data = self.variables.get(self.tokens[idx+4][1], self.tokens[idx+4][1].strip('"'))
                 if self.is_path_allowed(f_name):
                     with open(f_name, 'w') as f: f.write(str(f_data))
                     print(f"💾 [IO] Saved to {f_name}")
-                else: self.report_error("Security", "Access to system files denied", line)
+                else: self.report_error("Security", "Access denied", line)
                 idx += 6
-            elif kind == 'NET_SEND':
-                msg = self.variables.get(self.tokens[idx+2][1].strip('"'), self.tokens[idx+2][1].strip('"'))
-                try: requests.post(self.bridge_url, json={"message": msg}, timeout=5)
-                except: pass
-                idx += 4
             
             else: idx += 1
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
-    else: print("Falcon Engine v4.5 Unified Active")
-        # ... (আগের সব কোড এখানে থাকবে) ...
-
 def main():
-    engine = FalconEngine()
-    if len(sys.argv) > 1:
-        # 'falcon run filename.fcn' support করার জন্য
-        if sys.argv[1] == "run" and len(sys.argv) > 2:
-            engine.run(sys.argv[2])
-        else:
-            engine.run(sys.argv[1])
-    else:
-        print("🦅 Falcon Engine v4.5 Active. Use 'falcon <filename>' to run.")
+    if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
+    else: print("🦅 Falcon Engine v4.6 (Future-Ready) Active")
 
 if __name__ == "__main__":
     main()
-    
+        
