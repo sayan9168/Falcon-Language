@@ -188,4 +188,19 @@ class FalconEngine:
 if __name__ == "__main__":
     if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
     else: print("Falcon Engine v4.5 Unified Active")
-                            
+        # ... (আগের সব কোড এখানে থাকবে) ...
+
+def main():
+    engine = FalconEngine()
+    if len(sys.argv) > 1:
+        # 'falcon run filename.fcn' support করার জন্য
+        if sys.argv[1] == "run" and len(sys.argv) > 2:
+            engine.run(sys.argv[2])
+        else:
+            engine.run(sys.argv[1])
+    else:
+        print("🦅 Falcon Engine v4.5 Active. Use 'falcon <filename>' to run.")
+
+if __name__ == "__main__":
+    main()
+    
