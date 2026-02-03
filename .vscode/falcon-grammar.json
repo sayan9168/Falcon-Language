@@ -1,0 +1,10 @@
+{
+    "scopeName": "source.falcon",
+    "patterns": [
+        { "name": "keyword.control.falcon", "match": "\\b(if|endif|repeat|endrepeat|import)\\b" },
+        { "name": "keyword.other.secure.falcon", "match": "\\b(secure let)\\b" },
+        { "name": "entity.name.function.falcon", "match": "\\b(print|ai\\.ask|file\\.write|file\\.read|network\\.send)\\b" },
+        { "name": "string.quoted.double.falcon", "match": "\".*?\"" },
+        { "name": "comment.line.double-slash.falcon", "match": "//.*" }
+    ]
+}
