@@ -13,3 +13,5 @@ secure let sys_info = {
 }
 
 print("✅ Falcon Standard Library Loaded Successfully.")
+include fsl.fcn
+include examples/*.fcn
