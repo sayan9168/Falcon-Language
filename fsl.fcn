@@ -1,0 +1,15 @@
+// Falcon Standard Library (FSL) v1.0
+// Useful constants and pre-defined logic
+
+secure let PI = "3.14159"
+secure let VERSION = "4.5.0"
+secure let AUTHOR = "Sayan"
+
+// System Info Object
+secure let sys_info = {
+    "lang": "Falcon",
+    "core": "Shield-Core",
+    "ai_status": "Enabled"
+}
+
+print("✅ Falcon Standard Library Loaded Successfully.")
