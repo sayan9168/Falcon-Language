@@ -1,8 +1,16 @@
 import sys
 import re
 import os
+import json
 import requests
-from google import genai  # New Google AI SDK
+from google import genai
+
+# টার্মিনাল কালার কোড
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+CYAN = '\033[96m'
+RESET = '\033[0m'
 
 # --- TOKEN DEFINITIONS ---
 TOKEN_TYPES = [
@@ -26,6 +34,8 @@ TOKEN_TYPES = [
     ('RPAREN',     r'\)'),
     ('LBRACE',     r'\{'),           
     ('RBRACE',     r'\}'),
+    ('LBRACKET',   r'\['), # নতুন: লিস্টের জন্য           
+    ('RBRACKET',   r'\]'), # নতুন: লিস্টের জন্য
     ('COLON',      r':'),
     ('COMMA',      r','),
     ('NEWLINE',    r'\n'),
@@ -37,21 +47,29 @@ class FalconEngine:
     def __init__(self):
         self.variables = {}
         self.tokens = []
-        self.line_num = 1
-        self.bridge_url = "https://f13080e7d994051c-152-59-162-148.serveousercontent.com/send"
-        
-        # New AI Config for 2026
-        self.api_key = "YOUR_GEMINI_API_KEY"
-        if self.api_key != "YOUR_GEMINI_API_KEY":
-            self.client = genai.Client(api_key=self.api_key)
-        
         self.base_dir = os.getcwd()
+        self.config_path = os.path.expanduser("~/.falcon_config")
+        self.load_auth()
+
+    def load_auth(self):
+        if os.path.exists(self.config_path):
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
+                key = config.get("api_key")
+                self.client = genai.Client(api_key=key) if key else None
+        else:
+            self.client = None
+
+    def save_auth(self, key):
+        with open(self.config_path, 'w') as f:
+            json.dump({"api_key": key}, f)
+        print(f"{GREEN}✅ Authentication Successful! Falcon AI is now active.{RESET}")
 
     def report_error(self, error_type, message, line):
-        print(f"\n🔥 [Falcon {error_type} Error]")
-        print(f"👉 {message}")
-        print(f"📍 Location: Line {line}")
-        print("-" * 30)
+        print(f"\n{RED}🔥 [Falcon {error_type} Error]{RESET}")
+        print(f"{YELLOW}👉 Message:{RESET} {message}")
+        print(f"{CYAN}📍 Location:{RESET} Line {line}")
+        print(f"{RED}{'-' * 35}{RESET}")
         sys.exit(1)
 
     def is_path_allowed(self, path):
@@ -71,7 +89,7 @@ class FalconEngine:
 
     def run(self, filename):
         if not os.path.exists(filename):
-            print(f"❌ File '{filename}' not found.")
+            print(f"{RED}❌ File '{filename}' not found.{RESET}")
             return
         with open(filename, 'r') as f:
             code = f.read()
@@ -83,7 +101,7 @@ class FalconEngine:
         while idx < end:
             kind, val, line = self.tokens[idx]
 
-            # 1. Module System (Import)
+            # 1. Module System
             if kind == 'IMPORT':
                 module_name = self.tokens[idx+1][1].strip('"') + ".fcn"
                 if os.path.exists(module_name):
@@ -95,38 +113,51 @@ class FalconEngine:
                     self.report_error("Import", f"Module '{module_name}' missing", line)
                 idx += 2
 
-            # 2. Secure Let (Variables, AI, Dict, Math)
+            # 2. Secure Let (Variable/Dict/AI/List/Math)
             elif kind == 'SECURE_LET':
                 target = self.tokens[idx+1][1]
                 
-                # Dictionary Support
-                if self.tokens[idx+3][0] == 'LBRACE':
+                # --- List Support ---
+                if self.tokens[idx+3][0] == 'LBRACKET':
+                    idx += 4
+                    arr = []
+                    while self.tokens[idx][0] != 'RBRACKET':
+                        item = self.tokens[idx][1].strip('"')
+                        if item.isdigit(): item = int(item)
+                        arr.append(item)
+                        idx += 1
+                        if self.tokens[idx][0] == 'COMMA': idx += 1
+                    self.variables[target] = arr
+                    idx += 1
+
+                # --- Dictionary Support ---
+                elif self.tokens[idx+3][0] == 'LBRACE':
                     idx += 4
                     obj = {}
                     while self.tokens[idx][0] != 'RBRACE':
                         k = self.tokens[idx][1].strip('"')
                         v = self.tokens[idx+2][1].strip('"')
+                        if v.isdigit(): v = int(v)
                         obj[k] = v
                         idx += 3
                         if self.tokens[idx][0] == 'COMMA': idx += 1
                     self.variables[target] = obj
                     idx += 1
                 
-                # AI Support (Updated for Gemini 2.0)
+                # --- AI Support ---
                 elif self.tokens[idx+3][1] == 'ai.ask':
+                    if not self.client:
+                        self.report_error("Auth", "AI Key not found. Run 'falcon --auth' first.", line)
                     prompt = self.tokens[idx+5][1].strip('"')
-                    print(f"🧠 [Falcon AI] Querying Gemini 2.0...")
+                    print(f"{CYAN}🧠 [Falcon AI] Querying Gemini...{RESET}")
                     try:
-                        response = self.client.models.generate_content(
-                            model="gemini-2.0-flash",
-                            contents=prompt
-                        )
+                        response = self.client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
                         self.variables[target] = response.text
                     except Exception as e:
                         self.variables[target] = f"AI Error: {str(e)}"
                     idx += 7
-                
-                # Math Logic
+
+                # --- Math Support ---
                 elif idx + 4 < end and self.tokens[idx+4][0] == 'OP':
                     v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
                     v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
@@ -138,15 +169,18 @@ class FalconEngine:
                     self.variables[target] = res
                     idx += 6
                 else:
-                    self.variables[target] = self.tokens[idx+3][1].strip('"')
+                    val_to_store = self.tokens[idx+3][1].strip('"')
+                    if val_to_store.isdigit(): val_to_store = int(val_to_store)
+                    self.variables[target] = val_to_store
                     idx += 4
 
             # 3. Print Output
             elif kind == 'PRINT':
                 content = self.tokens[idx+2][1].strip('"')
-                print(f"🦅 [Falcon]: {self.variables.get(content, content)}")
+                data = self.variables.get(content, content)
+                print(f"{GREEN}🦅 [Falcon]:{RESET} {data}")
                 idx += 4
-
+            
             # 4. Repeat Loops
             elif kind == 'REPEAT':
                 times = int(self.tokens[idx+1][1])
@@ -158,22 +192,21 @@ class FalconEngine:
                     loop_end += 1
                 for _ in range(times): self.execute(loop_start, loop_end - 1)
                 idx = loop_end
-
-            # 5. Shield-Core File IO
-            elif kind == 'FILE_IO' and val == 'file.write':
-                f_name = self.tokens[idx+2][1].strip('"')
-                f_data = self.variables.get(self.tokens[idx+4][1], self.tokens[idx+4][1].strip('"'))
-                if self.is_path_allowed(f_name):
-                    with open(f_name, 'w') as f: f.write(str(f_data))
-                    print(f"💾 [IO] Saved to {f_name}")
-                else: self.report_error("Security", "Access denied", line)
-                idx += 6
             
             else: idx += 1
 
 def main():
-    if len(sys.argv) > 1: FalconEngine().run(sys.argv[1])
-    else: print("🦅 Falcon Engine v4.6 (Future-Ready) Active")
+    engine = FalconEngine()
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg == "--auth":
+            key = input("🔑 Enter Gemini API Key: ").strip()
+            engine.save_auth(key)
+        else:
+            engine.run(arg)
+    else:
+        print(f"{CYAN}🦅 Falcon Engine v4.8 (Arrays & Pro) Active{RESET}")
+        print(f"Usage: {GREEN}falcon <filename>{RESET} or {YELLOW}falcon --auth{RESET}")
 
 if __name__ == "__main__":
     main()
