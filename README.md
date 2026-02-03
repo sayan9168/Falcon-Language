@@ -61,3 +61,7 @@ Falcon protects your system using a **Whitelisted Sandboxing** mechanism.
 - **File System Lock:** The engine checks every `file.write` or `file.read` call using `is_path_allowed()`. It restricts access only to the project's base directory, preventing scripts from accessing sensitive system files like `/etc/passwd` or private documents.
 - **Variable Encryption:** Variables declared with `secure let` are handled within a protected memory space in the engine's state.
 - **Zero-Trust Network:** All `network.send` calls are routed through a secure bridge, ensuring no unauthorized data leaks.
+## 📦 Professional Tooling
+- **Standard Library:** Use `import "fsl"` to access built-in constants.
+- **Easy Install:** Run `pip install .` to install Falcon as a system tool.
+- **Performance:** Verified with `benchmarks.fcn`.
