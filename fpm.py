@@ -27,3 +27,30 @@ if __name__ == "__main__":
         print("🚀 Falcon Package Manager (FPM) v1.0")
         print("Usage: python fpm.py install <package_name>")
       
+import os
+import sys
+import subprocess
+
+def install(package_url):
+    print(f"🦅 Falcon Package Manager: Installing {package_url}...")
+    try:
+        # এটি প্যাকেজটিকে আপনার লোকাল ফোল্ডারে ক্লোন করবে
+        subprocess.run(["git", "clone", package_url], check=True)
+        print("✅ Installation successful!")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: fpm install <package_github_url>")
+        return
+    
+    command = sys.argv[1]
+    target = sys.argv[2]
+    
+    if command == "install":
+        install(target)
+
+if __name__ == "__main__":
+    main()
+
