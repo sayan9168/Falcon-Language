@@ -3,9 +3,9 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "falcon-lang-sayan"  # 'falcon-lang' নামটা হয়তো অলরেডি কেউ নিয়ে নিয়েছে, তাই আপনার নাম যোগ করা নিরাপদ।
+name = "falcon-lang-sayan"
 version = "4.8.0"
-description = "A secure, AI-powered programming language by Sayan."
+description = "Secure, AI-powered language ."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -13,5 +13,9 @@ dependencies = [
     "requests"
 ]
 
+[tool.setuptools]
+py-modules = ["falcon_engine", "fpm"]
+
 [project.scripts]
 falcon = "falcon_engine:main"
+
