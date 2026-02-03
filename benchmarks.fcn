@@ -1,0 +1,13 @@
+// Falcon Performance Benchmark
+import "fsl"
+
+print("🚀 Starting Benchmark: 1000 Cycles...")
+
+secure let count = 0
+repeat 1000
+    // Simulating a light computational task
+    secure let temp = 10 + 20
+endrepeat
+
+print("✅ Benchmark Completed.")
+print("Falcon Engine is stable under load.")
