@@ -1,0 +1,66 @@
+// Falcon Network Scanner
+// Simple LAN device discovery tool using ping & arp
+// Created by SAYAN for Falcon Language demo
+// Falcon Network Scanner
+// Simple LAN device discovery tool
+// Scans 192.168.1.0/24 subnet (common home router range)
+
+print "Falcon Network Scanner v1.0"
+print "Scanning local network... (this may take 20-60 seconds)"
+
+secure let base_ip = "192.168.1."
+secure let found_devices = []
+
+// Scan IP from 1 to 254
+repeat 254 {
+    secure let current = i + 1
+    secure let target_ip = base_ip + current
+
+    // Ping the IP (network.send is used for ping)
+    secure let ping_result = network.send "ping -c 1 -W 1 " + target_ip
+
+    if ping_result contains "1 received" {
+        // Device is online
+        secure let device_info = {ip: target_ip, status: "online"}
+
+        // Try to get MAC (using arp - simple way)
+        secure let arp_result = network.send "arp -n " + target_ip
+        if arp_result contains target_ip {
+            // Extract MAC (rough parsing)
+            secure let parts = arp_result.split " "
+            repeat parts.length {
+                if parts[j] contains ":" and parts[j].length == 17 {
+                    device_info[mac] = parts[j]
+                    break
+                }
+            }
+        }
+
+        found_devices = found_devices + [device_info]
+        print "Online: " + target_ip
+        if device_info[mac] {
+            print "   MAC: " + device_info[mac]
+        }
+    }
+}
+
+// Summary
+print ""
+print "Scan Complete!"
+print "Total online devices found: " + found_devices.length
+
+if found_devices.length > 0 {
+    print "Devices:"
+    repeat found_devices.length {
+        secure let dev = found_devices[i]
+        print " - " + dev[ip]
+        if dev[mac] {
+            print "   MAC: " + dev[mac]
+        }
+    }
+} else {
+    print "No devices found (check your network or subnet)."
+}
+
+print "Scan time: ~" + time.now
+print "Thanks for using Falcon Network Scanner!"
