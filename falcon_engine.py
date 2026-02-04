@@ -16,10 +16,10 @@ TOKEN_TYPES = [
     ('COMMENT',          r'//.*'),
     ('IMPORT',           r'import'),
     ('SECURE_LET',       r'secure let'),
-    ('SECURE_CONST',     r'secure const'),        # নতুন
-    ('TRY',              r'try'),                 # নতুন
-    ('CATCH',            r'catch'),               # নতুন
-    ('ENDTRY',           r'endtry'),              # নতুন
+    ('SECURE_CONST',     r'secure const'),
+    ('TRY',              r'try'),
+    ('CATCH',            r'catch'),
+    ('ENDTRY',           r'endtry'),
     ('IF',               r'if'),
     ('ENDIF',            r'endif'),
     ('REPEAT',           r'repeat'),
@@ -31,6 +31,10 @@ TOKEN_TYPES = [
     ('AI_EXPLAIN',       r'ai\.explain'),
     ('AI_REFACTOR',      r'ai\.refactor'),
     ('NET_SEND',         r'network\.send'),
+    ('CRYPTO_HASH',      r'crypto\.hash'),         # নতুন
+    ('CRYPTO_ENCRYPT',   r'crypto\.encrypt'),      # নতুন
+    ('CRYPTO_DECRYPT',   r'crypto\.decrypt'),      # নতুন
+    ('LOG',              r'log'),                  # নতুন
     ('ID',               r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ('OP',               r'==|!=|>=|<=|>|<|\+|\-|\*|\/'),
     ('ASSIGN',           r'='),
@@ -52,7 +56,7 @@ TOKEN_TYPES = [
 class FalconEngine:
     def __init__(self):
         self.variables = {}
-        self.constants = set()                    # নতুন: constants track করার জন্য
+        self.constants = set()
         self.tokens = []
         self.base_dir = os.getcwd()
         self.config_path = os.path.expanduser("~/.falcon_config")
@@ -128,7 +132,7 @@ class FalconEngine:
                     self.report_error("Import", f"Module '{module_name}' missing", line)
                 idx += 2
 
-            # 2. Secure Const (immutable variable)
+            # 2. Secure Const
             elif kind == 'SECURE_CONST':
                 target = self.tokens[idx+1][1]
                 if target in self.variables or target in self.constants:
@@ -148,11 +152,10 @@ class FalconEngine:
                 self.constants.add(target)
                 idx += 4
 
-            # 3. Secure Let (Variable / Dict / AI / List / Math)
+            # 3. Secure Let (Variable / Dict / AI / List / Math / Crypto)
             elif kind == 'SECURE_LET':
                 target = self.tokens[idx+1][1]
 
-                # Const re-assignment check
                 if target in self.constants:
                     self.report_error("ConstError", f"Cannot reassign constant '{target}'", line)
 
@@ -175,7 +178,7 @@ class FalconEngine:
                     obj = {}
                     while idx < end and self.tokens[idx][0] != 'RBRACE':
                         k = self.tokens[idx][1].strip('"')
-                        idx += 2  # skip colon
+                        idx += 2
                         v = self.tokens[idx][1].strip('"')
                         if v.isdigit(): v = int(v)
                         obj[k] = v
@@ -227,6 +230,40 @@ class FalconEngine:
                     elif op == '/': res = v1 / v2 if v2 != 0 else "Division by zero"
                     self.variables[target] = res
                     idx += 6
+
+                # Crypto Functions
+                elif idx+3 < end and self.tokens[idx+3][0] in ('CRYPTO_HASH', 'CRYPTO_ENCRYPT', 'CRYPTO_DECRYPT'):
+                    crypto_type = self.tokens[idx+3][0]
+
+                    if crypto_type == 'CRYPTO_HASH':
+                        if idx+5 >= end or self.tokens[idx+5][0] != 'STRING':
+                            self.report_error("Syntax", "crypto.hash expects a string", line)
+                        text = self.tokens[idx+5][1].strip('"')
+                        import hashlib
+                        hashed = hashlib.sha256(text.encode()).hexdigest()
+                        self.variables[target] = hashed
+                        idx += 6
+
+                    elif crypto_type in ('CRYPTO_ENCRYPT', 'CRYPTO_DECRYPT'):
+                        if idx+7 >= end or self.tokens[idx+5][0] != 'STRING' or self.tokens[idx+7][0] != 'STRING':
+                            self.report_error("Syntax", "crypto.encrypt/decrypt expects text and key", line)
+
+                        text = self.tokens[idx+5][1].strip('"')
+                        key = self.tokens[idx+7][1].strip('"')
+
+                        # Simple XOR for demo (replace with real crypto later)
+                        def xor_encrypt_decrypt(data, key):
+                            key = (key * (len(data) // len(key) + 1))[:len(data)]
+                            return ''.join(chr(ord(c) ^ ord(k)) for c, k in zip(data, key))
+
+                        if crypto_type == 'CRYPTO_ENCRYPT':
+                            result = xor_encrypt_decrypt(text, key)
+                        else:
+                            result = xor_encrypt_decrypt(text, key)  # XOR is symmetric
+
+                        self.variables[target] = result
+                        idx += 8
+
                 else:
                     val_to_store = self.tokens[idx+3][1].strip('"')
                     if val_to_store.isdigit(): val_to_store = int(val_to_store)
@@ -260,7 +297,6 @@ class FalconEngine:
                 except Exception as e:
                     error_msg = str(e)
                     if catch_start is not None:
-                        # catch condition (optional)
                         cond_idx = catch_start + 1
                         catch_condition = ""
                         if cond_idx < end and self.tokens[cond_idx][0] == 'STRING':
@@ -274,14 +310,39 @@ class FalconEngine:
 
                 idx = endtry_pos + 1
 
-            # 5. Print Output
+            # 5. Logging
+            elif kind == 'LOG':
+                if idx+2 >= end or self.tokens[idx+2][0] != 'STRING':
+                    self.report_error("Syntax", "log expects a string message", line)
+
+                message = self.tokens[idx+2][1].strip('"')
+                level = "info"
+
+                if idx+5 < end and self.tokens[idx+3][1] == 'level' and self.tokens[idx+4][1] == '=':
+                    level_token = self.tokens[idx+5][1].strip('"').lower()
+                    if level_token in ['info', 'warn', 'error', 'debug']:
+                        level = level_token
+                    idx += 6
+                else:
+                    idx += 3
+
+                colors = {
+                    'info': GREEN,
+                    'warn': YELLOW,
+                    'error': RED,
+                    'debug': CYAN
+                }
+                color = colors.get(level, RESET)
+                print(f"{color}[{level.upper()}] {message}{RESET}")
+
+            # 6. Print Output
             elif kind == 'PRINT':
                 content = self.tokens[idx+2][1].strip('"')
                 data = self.variables.get(content, content)
                 print(f"{GREEN}🦅 [Falcon]:{RESET} {data}")
                 idx += 4
 
-            # 6. Repeat Loops
+            # 7. Repeat Loops
             elif kind == 'REPEAT':
                 times = int(self.tokens[idx+1][1])
                 loop_start = idx + 2
@@ -307,7 +368,7 @@ def main():
         else:
             engine.run(arg)
     else:
-        print(f"{CYAN}🦅 Falcon Engine v5.0 (Const + Try-Catch) Active{RESET}")
+        print(f"{CYAN}🦅 Falcon Engine v5.1 (Crypto + Logging) Active{RESET}")
         print(f"Usage: {GREEN}falcon <filename>{RESET} or {YELLOW}falcon --auth{RESET}")
 
 if __name__ == "__main__":
