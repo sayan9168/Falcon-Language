@@ -31,10 +31,11 @@ TOKEN_TYPES = [
     ('AI_EXPLAIN',       r'ai\.explain'),
     ('AI_REFACTOR',      r'ai\.refactor'),
     ('NET_SEND',         r'network\.send'),
-    ('CRYPTO_HASH',      r'crypto\.hash'),         # নতুন
-    ('CRYPTO_ENCRYPT',   r'crypto\.encrypt'),      # নতুন
-    ('CRYPTO_DECRYPT',   r'crypto\.decrypt'),      # নতুন
-    ('LOG',              r'log'),                  # নতুন
+    ('CRYPTO_HASH',      r'crypto\.hash'),
+    ('CRYPTO_ENCRYPT',   r'crypto\.encrypt'),
+    ('CRYPTO_DECRYPT',   r'crypto\.decrypt'),
+    ('LOG',              r'log'),
+    ('SECURE_INPUT',     r'secure input'),          # নতুন যোগ করা হলো
     ('ID',               r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ('OP',               r'==|!=|>=|<=|>|<|\+|\-|\*|\/'),
     ('ASSIGN',           r'='),
@@ -152,7 +153,7 @@ class FalconEngine:
                 self.constants.add(target)
                 idx += 4
 
-            # 3. Secure Let (Variable / Dict / AI / List / Math / Crypto)
+            # 3. Secure Let (Variable / Dict / AI / List / Math / Crypto / Secure Input)
             elif kind == 'SECURE_LET':
                 target = self.tokens[idx+1][1]
 
@@ -251,7 +252,6 @@ class FalconEngine:
                         text = self.tokens[idx+5][1].strip('"')
                         key = self.tokens[idx+7][1].strip('"')
 
-                        # Simple XOR for demo (replace with real crypto later)
                         def xor_encrypt_decrypt(data, key):
                             key = (key * (len(data) // len(key) + 1))[:len(data)]
                             return ''.join(chr(ord(c) ^ ord(k)) for c, k in zip(data, key))
@@ -259,10 +259,37 @@ class FalconEngine:
                         if crypto_type == 'CRYPTO_ENCRYPT':
                             result = xor_encrypt_decrypt(text, key)
                         else:
-                            result = xor_encrypt_decrypt(text, key)  # XOR is symmetric
+                            result = xor_encrypt_decrypt(text, key)
 
                         self.variables[target] = result
                         idx += 8
+
+                # Secure Input (নতুন যোগ করা হলো)
+                elif idx+3 < end and self.tokens[idx+3][0] == 'SECURE_INPUT':
+                    if idx+5 >= end or self.tokens[idx+5][0] != 'STRING':
+                        self.report_error("Syntax", "secure input expects a prompt string", line)
+
+                    prompt = self.tokens[idx+5][1].strip('"')
+                    input_type = "text"
+
+                    # optional type=...
+                    if idx+8 < end and self.tokens[idx+6][1] == 'type' and self.tokens[idx+7][1] == '=':
+                        type_token = self.tokens[idx+8][1].strip('"').lower()
+                        if type_token in ['text', 'password']:
+                            input_type = type_token
+                        idx += 9
+                    else:
+                        idx += 6
+
+                    print(prompt, end=' ', flush=True)
+
+                    if input_type == 'password':
+                        import getpass
+                        value = getpass.getpass(prompt="")
+                    else:
+                        value = input()
+
+                    self.variables[target] = value
 
                 else:
                     val_to_store = self.tokens[idx+3][1].strip('"')
@@ -368,7 +395,7 @@ def main():
         else:
             engine.run(arg)
     else:
-        print(f"{CYAN}🦅 Falcon Engine v5.1 (Crypto + Logging) Active{RESET}")
+        print(f"{CYAN}🦅 Falcon Engine v5.2 (Secure Input Added) Active{RESET}")
         print(f"Usage: {GREEN}falcon <filename>{RESET} or {YELLOW}falcon --auth{RESET}")
 
 if __name__ == "__main__":
