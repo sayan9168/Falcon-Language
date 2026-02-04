@@ -26,3 +26,10 @@
     }
   ]
 }
+{
+    "name": "support.function.ai.falcon",
+    "match": "\\b(ai\\.ask|ai\\.generate_code|ai\\.explain|ai\\.refactor)\\b",
+    "captures": {
+        "0": { "name": "entity.name.function.ai.falcon" }
+    }
+}
