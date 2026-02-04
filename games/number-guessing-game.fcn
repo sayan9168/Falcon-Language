@@ -1,0 +1,34 @@
+// Falcon Language - Number Guessing Game
+// Created by SAYAN
+// A fun game to guess a secret number between 1 and 100
+// Number Guessing Game in Falcon Language
+print "Welcome to Falcon Guessing Game!"
+print "Ami 1 to 100 er moddhe ekta number vablam. Tumi guess koro!"
+
+// সিকিউর র‍্যান্ডম নম্বর জেনারেট
+secure let secret = crypto.random 1 100
+secure let attempts = 0
+
+repeat 10 {
+    attempts = attempts + 1
+    secure let guess = secure input "Tomar guess (1-100): " type=text
+
+    // স্ট্রিং থেকে নম্বরে কনভার্ট (সিম্পল)
+    guess = int(guess)
+
+    if guess == secret {
+        print "Congratulations! Tumi " + attempts + " bar e thik guess korle!"
+        break
+    } elseif guess < secret {
+        print "Choto number vabcho! Boro number try koro."
+    } else {
+        print "Boro number vabcho! Choto number try koro."
+    }
+
+    if attempts == 10 {
+        print "Game Over! Secret number chilo: " + secret
+        break
+    }
+}
+
+print "Thanks for playing Falcon Game!"
