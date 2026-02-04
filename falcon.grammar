@@ -21,3 +21,7 @@ identifier   = letter , { letter | digit } ;
 string       = '"' , { all_characters } , '"' ;
 
 comment      = "//" , { all_characters } ;
+ai_ask: "ai" "." "ask" string
+ai_generate_code: "ai" "." "generate_code" string
+ai_explain: "ai" "." "explain" string
+ai_refactor: "ai" "." "refactor" string
