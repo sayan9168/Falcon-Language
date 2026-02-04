@@ -2,7 +2,6 @@ import sys
 import re
 import os
 import json
-import requests
 from google import genai
 
 # টার্মিনাল কালার কোড
@@ -23,7 +22,10 @@ TOKEN_TYPES = [
     ('ENDREPEAT',  r'endrepeat'),
     ('PRINT',      r'print'),
     ('FILE_IO',    r'file\.(write|read)'),
-    ('AI_CALL',    r'ai\.ask'), 
+    ('AI_CALL',         r'ai\.ask'), 
+    ('AI_GENERATE_CODE', r'ai\.generate_code'),
+    ('AI_EXPLAIN',      r'ai\.explain'),
+    ('AI_REFACTOR',     r'ai\.refactor'),
     ('NET_SEND',   r'network\.send'),
     ('ID',         r'[a-zA-Z_][a-zA-Z0-9_]*'),
     ('OP',         r'==|!=|>=|<=|>|<|\+|\-|\*|\/'),
@@ -34,8 +36,8 @@ TOKEN_TYPES = [
     ('RPAREN',     r'\)'),
     ('LBRACE',     r'\{'),           
     ('RBRACE',     r'\}'),
-    ('LBRACKET',   r'\['), # নতুন: লিস্টের জন্য           
-    ('RBRACKET',   r'\]'), # নতুন: লিস্টের জন্য
+    ('LBRACKET',   r'\['),           
+    ('RBRACKET',   r'\]'),
     ('COLON',      r':'),
     ('COMMA',      r','),
     ('NEWLINE',    r'\n'),
@@ -87,14 +89,19 @@ class FalconEngine:
                 self.report_error("Syntax", f"Unknown character '{value}'", current_line)
             else: self.tokens.append((kind, value, current_line))
 
-    def run(self, filename):
-        if not os.path.exists(filename):
-            print(f"{RED}❌ File '{filename}' not found.{RESET}")
-            return
-        with open(filename, 'r') as f:
-            code = f.read()
-        self.tokenize(code)
-        self.execute(0, len(self.tokens))
+    def _call_gemini(self, prompt, line):
+        if not self.client:
+            self.report_error("Auth", "AI Key not found. Run 'falcon --auth' first.", line)
+        
+        print(f"{CYAN}🧠 [Falcon AI] Querying Gemini...{RESET}")
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            return response.text.strip()
+        except Exception as e:
+            return f"AI Error: {str(e)}"
 
     def execute(self, start, end):
         idx = start
@@ -118,54 +125,73 @@ class FalconEngine:
                 target = self.tokens[idx+1][1]
                 
                 # --- List Support ---
-                if self.tokens[idx+3][0] == 'LBRACKET':
+                if idx+3 < end and self.tokens[idx+3][0] == 'LBRACKET':
                     idx += 4
                     arr = []
-                    while self.tokens[idx][0] != 'RBRACKET':
+                    while idx < end and self.tokens[idx][0] != 'RBRACKET':
                         item = self.tokens[idx][1].strip('"')
                         if item.isdigit(): item = int(item)
                         arr.append(item)
                         idx += 1
-                        if self.tokens[idx][0] == 'COMMA': idx += 1
+                        if idx < end and self.tokens[idx][0] == 'COMMA': idx += 1
                     self.variables[target] = arr
-                    idx += 1
+                    idx += 1  # skip ]
 
                 # --- Dictionary Support ---
-                elif self.tokens[idx+3][0] == 'LBRACE':
+                elif idx+3 < end and self.tokens[idx+3][0] == 'LBRACE':
                     idx += 4
                     obj = {}
-                    while self.tokens[idx][0] != 'RBRACE':
+                    while idx < end and self.tokens[idx][0] != 'RBRACE':
                         k = self.tokens[idx][1].strip('"')
-                        v = self.tokens[idx+2][1].strip('"')
+                        idx += 2  # skip colon
+                        v = self.tokens[idx][1].strip('"')
                         if v.isdigit(): v = int(v)
                         obj[k] = v
-                        idx += 3
-                        if self.tokens[idx][0] == 'COMMA': idx += 1
+                        idx += 1
+                        if idx < end and self.tokens[idx][0] == 'COMMA': idx += 1
                     self.variables[target] = obj
-                    idx += 1
-                
-                # --- AI Support ---
-                elif self.tokens[idx+3][1] == 'ai.ask':
-                    if not self.client:
-                        self.report_error("Auth", "AI Key not found. Run 'falcon --auth' first.", line)
-                    prompt = self.tokens[idx+5][1].strip('"')
-                    print(f"{CYAN}🧠 [Falcon AI] Querying Gemini...{RESET}")
-                    try:
-                        response = self.client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-                        self.variables[target] = response.text
-                    except Exception as e:
-                        self.variables[target] = f"AI Error: {str(e)}"
-                    idx += 7
+                    idx += 1  # skip }
+
+                # --- AI Features ---
+                elif idx+3 < end and self.tokens[idx+3][0] in ('AI_CALL', 'AI_GENERATE_CODE', 'AI_EXPLAIN', 'AI_REFACTOR'):
+                    ai_type = self.tokens[idx+3][0]
+                    prompt_raw = self.tokens[idx+5][1].strip('"') if idx+5 < end else ""
+
+                    if ai_type == 'AI_CALL':
+                        full_prompt = prompt_raw
+                    elif ai_type == 'AI_GENERATE_CODE':
+                        full_prompt = (
+                            "You are an expert Falcon Language programmer. "
+                            "Generate clean, secure, and correct Falcon (.fcn) code ONLY. "
+                            "No explanations, no markdown, no comments unless explicitly asked. "
+                            "User request: " + prompt_raw
+                        )
+                    elif ai_type == 'AI_EXPLAIN':
+                        full_prompt = (
+                            "Explain the following code/text in clear, concise Bengali or English (match user language if possible): "
+                            + prompt_raw
+                        )
+                    elif ai_type == 'AI_REFACTOR':
+                        full_prompt = (
+                            "Refactor and improve the following code to make it more secure, readable, and efficient. "
+                            "Return only the improved Falcon code. Instruction: " + prompt_raw
+                        )
+
+                    result = self._call_gemini(full_prompt, line)
+                    self.variables[target] = result
+                    idx += 7  # secure let x = ai.xxx "prompt"
 
                 # --- Math Support ---
                 elif idx + 4 < end and self.tokens[idx+4][0] == 'OP':
-                    v1 = self.variables.get(self.tokens[idx+3][1], int(self.tokens[idx+3][1]) if self.tokens[idx+3][1].isdigit() else self.tokens[idx+3][1])
-                    v2 = self.variables.get(self.tokens[idx+5][1], int(self.tokens[idx+5][1]) if self.tokens[idx+5][1].isdigit() else self.tokens[idx+5][1])
+                    v1_str = self.tokens[idx+3][1]
+                    v2_str = self.tokens[idx+5][1]
+                    v1 = self.variables.get(v1_str, int(v1_str) if v1_str.isdigit() else v1_str)
+                    v2 = self.variables.get(v2_str, int(v2_str) if v2_str.isdigit() else v2_str)
                     op = self.tokens[idx+4][1]
-                    if op == '+': res = v1 + v2
+                    if op == '+': res = v1 + v2 if isinstance(v1, (int, float)) and isinstance(v2, (int, float)) else str(v1) + str(v2)
                     elif op == '-': res = v1 - v2
                     elif op == '*': res = v1 * v2
-                    elif op == '/': res = v1 / v2
+                    elif op == '/': res = v1 / v2 if v2 != 0 else "Division by zero"
                     self.variables[target] = res
                     idx += 6
                 else:
@@ -186,14 +212,16 @@ class FalconEngine:
                 times = int(self.tokens[idx+1][1])
                 loop_start = idx + 2
                 depth, loop_end = 1, loop_start
-                while depth > 0:
+                while depth > 0 and loop_end < end:
                     if self.tokens[loop_end][0] == 'REPEAT': depth += 1
                     if self.tokens[loop_end][0] == 'ENDREPEAT': depth -= 1
                     loop_end += 1
-                for _ in range(times): self.execute(loop_start, loop_end - 1)
+                for _ in range(times): 
+                    self.execute(loop_start, loop_end - 1)
                 idx = loop_end
             
-            else: idx += 1
+            else: 
+                idx += 1
 
 def main():
     engine = FalconEngine()
@@ -205,9 +233,8 @@ def main():
         else:
             engine.run(arg)
     else:
-        print(f"{CYAN}🦅 Falcon Engine v4.8 (Arrays & Pro) Active{RESET}")
+        print(f"{CYAN}🦅 Falcon Engine v4.9 (Enhanced AI Features) Active{RESET}")
         print(f"Usage: {GREEN}falcon <filename>{RESET} or {YELLOW}falcon --auth{RESET}")
 
 if __name__ == "__main__":
     main()
-        
