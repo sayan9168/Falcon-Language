@@ -65,3 +65,11 @@ Falcon protects your system using a **Whitelisted Sandboxing** mechanism.
 - **Standard Library:** Use `import "fsl"` to access built-in constants.
 - **Easy Install:** Run `pip install .` to install Falcon as a system tool.
 - **Performance:** Verified with `benchmarks.fcn`.
+### Advanced AI Commands (Gemini Powered)
+
+- `ai.ask "your question"` → সাধারণ প্রশ্নের উত্তর  
+- `ai.generate_code "description"` → Falcon কোড জেনারেট করে  
+  উদাহরণ:  
+  ```falcon
+  secure let func = ai.generate_code "secure login checker"
+  print(func)
